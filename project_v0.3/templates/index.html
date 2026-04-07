@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title> SPATIAL INTELLIGENCE</title>
+    
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Inter:wght@400;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    
+    <style>
+        body, html { margin: 0; padding: 0; height: 100%; overflow: hidden; background-color: #000; font-family: 'Inter', sans-serif; }
+        #map { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 1; }
+        
+        /* THE MAGNIFYING GLASS CURSOR */
+        #map.targeting-active, #map.targeting-active .leaflet-interactive { 
+            cursor: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="%2300ffcc" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line><circle cx="11" cy="11" r="2" fill="%2300ffcc"></circle></svg>') 11 11, auto !important; 
+        }
+        
+        h1, h2, h3, h4, h5, .tech-font, input, button { font-family: 'Share Tech Mono', monospace; text-transform: uppercase; letter-spacing: 1px; }
+
+        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar-track { background: rgba(0, 0, 0, 0.5); }
+        ::-webkit-scrollbar-thumb { background: rgba(0, 255, 255, 0.4); }
+        ::-webkit-scrollbar-thumb:hover { background: #00ffcc; }
+
+        .hud-panel {
+            position: absolute; z-index: 1000; background: rgba(10, 12, 16, 0.85); backdrop-filter: blur(8px);
+            border: 1px solid rgba(0, 255, 255, 0.2); box-shadow: 0 0 20px rgba(0, 0, 0, 0.8); color: #b0c4de; display: flex;
+        }
+
+        .panel-left { top: 20px; left: 20px; bottom: 100px; width: 380px; flex-direction: column; }
+        .panel-right { top: 20px; right: 20px; bottom: 100px; width: 420px; flex-direction: column; }
+        
+        .panel-bottom {
+            bottom: 20px; left: 50%; transform: translateX(-50%); width: 60%; min-width: 600px; height: 60px;
+            flex-direction: row; align-items: center; padding: 0 25px; border-top: 2px solid rgba(0, 255, 255, 0.5); 
+        }
+
+        .hud-header { background: rgba(0, 255, 255, 0.05); border-bottom: 1px solid rgba(0, 255, 255, 0.3); color: #00ffcc; padding: 12px 15px; font-size: 0.9rem; font-weight: bold; }
+        .hud-body { padding: 15px; overflow-y: auto; flex-grow: 1; display: flex; flex-direction: column;}
+        
+        .form-control { background-color: rgba(0,0,0,0.5) !important; border: 1px solid #00ffcc !important; color: #00ffcc !important; border-radius: 0; }
+        .form-control::placeholder { color: rgba(0, 255, 204, 0.3); }
+        .btn-target { background-color: #00ffcc; color: #000; border: none; border-radius: 0; font-weight: bold; padding: 8px 15px; width: 100%; margin-top: 10px; }
+        .btn-target:hover { background-color: #00ccaa; box-shadow: 0 0 10px #00ffcc; }
+
+        .metric-box { background: rgba(0,0,0,0.4); border: 1px solid rgba(0, 255, 204, 0.2); padding: 15px; text-align: center; margin-bottom: 15px; }
+        .metric-title { font-size: 0.75rem; color: rgba(255,255,255,0.5); }
+        .metric-value { font-size: 2.2rem; color: #fff; text-shadow: 0 0 8px rgba(255,255,255,0.3); }
+        
+        .form-range::-webkit-slider-thumb { background: #00ffcc; border-radius: 0; border: 1px solid #fff; width: 15px; height: 25px; cursor: pointer; }
+        .form-range::-webkit-slider-runnable-track { background: rgba(0, 255, 255, 0.2); height: 4px; }
+
+        @media (max-width: 1024px) {
+            body, html { overflow-y: auto; height: auto; }
+            #map { position: relative; height: 50vh; width: 100vw; z-index: 1; border-bottom: 2px solid #00ffcc;}
+            .hud-panel { position: relative; width: 100% !important; top: 0 !important; left: 0 !important; right: 0 !important; bottom: 0 !important; transform: none !important; min-width: 0 !important; border: none; border-bottom: 1px solid rgba(0,255,255,0.2); border-radius: 0; box-shadow: none; }
+            .panel-bottom { height: auto; flex-direction: column; padding: 20px; text-align: center; }
+            .panel-bottom .form-range { width: 100%; margin: 15px 0; }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="map"></div>
+
+    <div class="hud-panel panel-left">
+        <div class="hud-header"><i class="fas fa-satellite-dish me-2"></i>UPLINK CONSOLE</div>
+        <div class="hud-body">
+            
+            <div class="mb-3">
+                <label class="tech-font text-info" style="font-size: 0.8rem;">TARGET COORDINATES / DESIGNATION</label>
+                <input type="text" id="cityInput" class="form-control mt-1" placeholder="e.g. Pune" value="Pune">
+                <button id="btnAnalyze" class="btn btn-target tech-font" onclick="runPrediction()">INITIATE SCAN</button>
+                
+                <button id="btnTargetMode" class="btn btn-outline-info w-100 tech-font mt-2" style="border-radius: 0; border-width: 1px;" onclick="toggleTargetMode()">
+                    <i class="fas fa-search-location"></i> MANUAL INSPECTION [OFF]
+                </button>
+            </div>
+            
+            <hr style="border-color: rgba(0, 255, 255, 0.2); margin: 10px 0;">
+            
+            <div class="mb-2">
+                <label class="tech-font text-info mb-2" style="font-size: 0.8rem;">OPTICS LAYER CONTROL</label>
+                <button class="btn btn-outline-secondary w-100 tech-font" onclick="toggleEsri()" style="border-radius: 0; color: #fff; border-color: rgba(255,255,255,0.3);">
+                    <i class="fas fa-layer-group"></i> TOGGLE ESRI SATELLITE
+                </button>
+            </div>
+            
+            <hr style="border-color: rgba(0, 255, 255, 0.2); margin: 10px 0;">
+            
+            <div class="flex-grow-1 d-flex flex-column">
+                <label class="tech-font text-info mb-2" style="font-size: 0.8rem;"><i class="fas fa-book-open"></i> HOW IT WORKS</label>
+                <div style="background: rgba(0,0,0,0.4); border: 1px solid rgba(0,255,255,0.15); padding: 10px; font-size: 0.7rem; line-height: 1.4; color: #a0aec0; overflow-y: auto; max-height: 150px; margin-bottom: 5px;">
+                    <p class="mb-3 text-white" style="font-style: italic;">Project predicts where a city will expand next by analyzing 5 years of space data.</p>
+                    <div class="text-info mb-1" style="font-weight: bold; border-bottom: 1px solid rgba(0,255,255,0.2); padding-bottom: 2px;">[ THE AI PIPELINE ]</div>
+                    <p class="mb-2 mt-2"><strong class="text-white">1. SATELLITES:</strong> We track how much brighter an area got at night over 5 years.</p>
+                    <p class="mb-2"><strong class="text-white">2. GROUND TRUTH:</strong> We scan local maps to verify if new infrastructure was built under those lights.</p>
+                    <p class="mb-2"><strong class="text-white">3. PREDICTION:</strong> The AI combines this to calculate the risk of suburban sprawl.</p>
+                </div>
+            </div>
+            
+            <hr style="border-color: rgba(0, 255, 255, 0.2); margin: 10px 0;">
+            
+            <div class="flex-grow-1 d-flex flex-column">
+                <label class="tech-font text-info mb-2" style="font-size: 0.8rem;"><i class="fas fa-terminal"></i>QUERY TERMINAL</label>
+                <div id="chatWindow" style="background: rgba(0,0,0,0.6); border: 1px solid rgba(0,255,255,0.15); padding: 10px; font-size: 0.75rem; color: #00ffcc; overflow-y: auto; height: 100px; margin-bottom: 8px; font-family: 'Share Tech Mono', monospace; display: flex; flex-direction: column; gap: 8px;">
+                    <div style="color: #888;">> SYSTEM ONLINE. AWAITING DATA UPLINK...</div>
+                </div>
+                <div class="d-flex gap-1 mb-2">
+                    <button class="btn btn-sm btn-outline-info flex-grow-1 tech-font" style="font-size: 0.6rem; border-radius: 0; padding: 4px;" onclick="sendQuickQuery('max_growth')">PEAK GROWTH</button>
+                    <button class="btn btn-sm btn-outline-info flex-grow-1 tech-font" style="font-size: 0.6rem; border-radius: 0; padding: 4px;" onclick="sendQuickQuery('risk_report')">SPRAWL RISK</button>
+                    <button class="btn btn-sm btn-outline-info flex-grow-1 tech-font" style="font-size: 0.6rem; border-radius: 0; padding: 4px;" onclick="sendQuickQuery('summary')">EXEC SUMMARY</button>
+                </div>
+                <div class="d-flex">
+                    <input type="text" id="chatInput" class="form-control" placeholder="Enter query..." style="font-size: 0.8rem; border-radius: 0; height: 32px;" onkeypress="if(event.key === 'Enter') processChat()">
+                    <button class="btn btn-target tech-font m-0 ms-1" style="height: 32px; padding: 0 15px;" onclick="processChat()"><i class="fas fa-paper-plane"></i></button>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <div class="hud-panel panel-right">
+        <div class="hud-header text-end">SYSTEM_PREDICTION:<span id="aiStatusBadge" style="color: #444;">AWAITING</span></div>
+        <div class="hud-body">
+            <div class="text-center mb-4 mt-2">
+                <div class="tech-font text-secondary" style="font-size: 0.8rem;">ACTIVE TARGET</div>
+                <h1 class="tech-font text-white" id="cityNameDisplay" style="font-size: 2.5rem; text-shadow: 0 0 10px rgba(0,255,204,0.3);">STANDBY</h1>
+            </div>
+            <div class="row g-2 mb-3">
+                <div class="col-6">
+                    <div class="metric-box"><div class="metric-title tech-font">AVG_RADIANCE</div><div class="metric-value tech-font" id="valRadiance">--</div></div>
+                </div>
+                <div class="col-6">
+                    <div class="metric-box"><div class="metric-title tech-font">YOY_GROWTH</div><div class="metric-value tech-font" id="valGrowth">--</div></div>
+                </div>
+                <div class="col-12">
+                    <div class="metric-box" style="border-color: rgba(255,0,255,0.4);">
+                        <div class="metric-title tech-font text-light">SPATIAL_PATCHINESS</div>
+                        <div class="metric-value tech-font" id="valPatchiness" style="color: #ff00ff;">--</div>
+                    </div>
+                </div>
+            </div>
+            <div class="mt-2" style="background: rgba(0,0,0,0.4); border: 1px solid rgba(0,255,255,0.2); padding: 10px;">
+                <div class="tech-font text-info mb-2" style="font-size: 0.8rem; text-align: center;">MACRO-ECONOMIC TRAJECTORY</div>
+                <canvas id="growthChart" height="150"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <div class="hud-panel panel-bottom">
+        <div class="tech-font text-info me-4" style="font-size: 1.5rem; width: 150px;"><i class="fas fa-history"></i> <span id="yearDisplay" class="ms-1">Q4 2025</span></div>
+        <input type="range" class="form-range flex-grow-1" id="yearSlider" min="0" max="19" step="1" value="19" oninput="changeHeatmapYear(this.value)">
+        <div class="tech-font text-secondary ms-4 text-end" style="font-size: 0.8rem; width: 100px;">TEMPORAL<br>ORBIT</div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>
